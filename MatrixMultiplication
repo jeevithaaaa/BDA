@@ -1,0 +1,93 @@
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.ArrayList;
+
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class matrix{
+
+public static class MatrixMapper extends Mapper<Object,Text,Text,Text>{
+
+public boolean isMatrixB=false;
+private int rowCounter=0;
+
+public void map(Object key,Text value,Context context)throws IOException,InterruptedException{
+String line = value.toString().trim();
+
+if(line.isEmpty()){
+isMatrixB=true;
+rowCounter=0;
+return;
+}
+
+rowCounter++;
+String[]numbers=line.split("\\s+");
+for(int col=1;col<=numbers.length;col++){
+context.write(new Text(isMatrixB?"B":"A"),
+new Text(rowCounter+","+col+","+numbers[col-1]));
+}
+}
+}
+public static class MatrixReducer extends Reducer<Text,Text,Text,Text>{
+
+private Map<String,Integer>matrixA=new HashMap<>();
+private Map<String,Integer>matrixB=new HashMap<>();
+private int size=0;
+
+public void reduce(Text key,Iterable<Text>values,Context context)throws IOException,InterruptedException{
+for(Text val:values){
+String[]parts=val.toString().split(",");
+int row=Integer.parseInt(parts[0]);
+int col=Integer.parseInt(parts[1]);
+int num=Integer.parseInt(parts[2]);
+size=Math.max(size,Math.max(row,col));
+
+
+if(key.toString().equals("A")){
+matrixA.put(row+","+col,num);
+}else{
+matrixB.put(row+","+col,num);
+}
+}
+if(!matrixA.isEmpty()&&!matrixB.isEmpty()){
+for(int i=1;i<=size;i++){
+StringBuilder row=new StringBuilder();
+for(int j=1;j<=size;j++){
+int sum=0;
+for(int k=1;k<=size;k++){
+int a=matrixA.getOrDefault(i+","+k,0);
+int b=matrixB.getOrDefault(k+","+j,0);
+sum+=a*b;
+}
+row.append(sum).append("");
+}
+context.write(null,new Text(row.toString().trim()));
+}
+}
+}
+}
+public static void main(String[]argsthrows Exception{
+Configuration conf=new Configuration();
+Job job=Job.getInstance(conf,"Matrix Multiplication Without cleanup");
+
+job.setJarByClass(matrix.class);
+job.setMapperClass(MatrixMapper.class);
+job.setReducerClass(MatrixReducer.class);
+job.setMapOutputKeyClass(Text.class);
+job.setMapOutputValueClass(Text.class);
+job.setOutputKeyClass(Text.class);
+job.setOutputValueClass(Text.class);
+
+FileInputFormat.addInputPath(job,new Path(args[0]));
+FileOutputFormat.addOutputPath(job,new Path(args[1]));
+
+System.exit(job.waitForCompletion(true)?0:1);
+}
